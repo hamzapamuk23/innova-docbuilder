@@ -1,18 +1,19 @@
 import customtkinter as ctk
-from tkinter import filedialog
+from tkinter import filedialog, colorchooser, messagebox
 import webbrowser
 import subprocess
 import threading
 import os
 import platform
-import shutil
 
 # Sadece Windows ise pywinstyles yükle
 IS_WINDOWS = platform.system() == "Windows"
 if IS_WINDOWS:
     import pywinstyles
 
-from compiler import compile_pdf
+import deps
+import style
+from compiler import compile_pdf, self_test as compile_self_test
 from constants import AI_PROMPT_RULES
 
 # --- RENK PALETİ: (Light, Dark) ---
@@ -30,8 +31,8 @@ NAV_HOVER_BG = ("#D8DDE3", "#1A2D47")
 NAV_TEXT = ("#57606A", "#7B8CA3")
 NAV_ACTIVE_TEXT = ("#1F2328", "#FFFFFF")
 PROGRESS_BG = ("#C8CED6", "#1C3352")
-INNOVA_BLUE = "#0078D4"
-INNOVA_DARK = "#005A9E"
+TT_BLUE = "#0078D4"
+TT_DARK = "#005A9E"
 GREEN = "#28A745"
 RED = "#DC3545"
 
@@ -66,10 +67,8 @@ class App(ctk.CTk):
         # Logo
         logo_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         logo_frame.pack(pady=(25, 30))
-        logo_inner = ctk.CTkFrame(logo_frame, fg_color="transparent")
-        logo_inner.pack()
-        ctk.CTkLabel(logo_inner, text="İnnova", font=("Segoe UI", 18, "bold"), text_color=INNOVA_BLUE).pack(side="left")
-        ctk.CTkLabel(logo_inner, text=" DocBuilder", font=("Segoe UI", 18), text_color=TEXT_SECONDARY).pack(side="left")
+        ctk.CTkLabel(logo_frame, text="İnnova", font=("Segoe UI", 18, "bold"), text_color=TT_BLUE, height=24).pack(side="left", padx=(0, 5))
+        ctk.CTkLabel(logo_frame, text="DocBuilder", font=("Segoe UI", 18), text_color=TEXT_SECONDARY, height=24).pack(side="left")
 
         # Navigasyon (Derle Sekmesi Kaldırıldı, Sadeleştirildi)
         self.nav_buttons = {}
@@ -78,6 +77,7 @@ class App(ctk.CTk):
             ("dashboard", "⊞  Dashboard"),
             ("check",     "✔  Sistem Kontrol"),
             ("rules",     "⚙  AI Kuralları"),
+            ("style",     "✎  PDF Stili"),
         ]
 
         for tab_id, tab_text in tabs:
@@ -110,7 +110,7 @@ class App(ctk.CTk):
         theme_frame.pack(fill="x", pady=(0, 12))
         self.lbl_theme = ctk.CTkLabel(theme_frame, text="☀️ Açık Tema", font=("Segoe UI", 12, "bold"), text_color=TEXT_SECONDARY)
         self.lbl_theme.pack(side="left")
-        self.theme_switch = ctk.CTkSwitch(theme_frame, text="", width=40, command=self.toggle_theme, progress_color=INNOVA_BLUE)
+        self.theme_switch = ctk.CTkSwitch(theme_frame, text="", width=40, command=self.toggle_theme, progress_color=TT_BLUE)
         self.theme_switch.pack(side="right")
 
         # Ayırıcı Çizgi (Separator)
@@ -130,6 +130,7 @@ class App(ctk.CTk):
         self._build_dashboard_frame()
         self._build_check_frame()
         self._build_rules_frame()
+        self._build_style_frame()
 
         self.current_tab = None
         self.switch_tab("dashboard")
@@ -170,7 +171,7 @@ class App(ctk.CTk):
             frame, text="Compile PDF",
             command=self.start_compile_thread,
             font=("Segoe UI", 14, "bold"),
-            fg_color=INNOVA_BLUE, hover_color=INNOVA_DARK,
+            fg_color=TT_BLUE, hover_color=TT_DARK,
             height=42, corner_radius=8
         )
         self.btn_compile.pack(fill="x", padx=20, pady=(0, 5))
@@ -196,7 +197,7 @@ class App(ctk.CTk):
 
         # Progress bar (Determinate mode)
         self.progress_bar = ctk.CTkProgressBar(
-            frame, mode="determinate", progress_color=INNOVA_BLUE,
+            frame, mode="determinate", progress_color=TT_BLUE,
             height=4, corner_radius=2, fg_color=PROGRESS_BG
         )
         self.progress_bar.pack(fill="x", padx=20, pady=(0, 12))
@@ -270,7 +271,7 @@ class App(ctk.CTk):
 
         info_text = (
             "Kusursuz ve kurumsal PDF'ler üretebilmek için, Markdown dosyalarınızı "
-            "Yapay Zeka (Antigravity vb.) ile üretirken sisteme Innova standart kurallarını vermeniz gerekmektedir.\n\n"
+            "Yapay Zeka (Antigravity vb.) ile üretirken sisteme İnnova standart kurallarını vermeniz gerekmektedir.\n\n"
             "Aksi takdirde üretilen Markdown, derleyici motorumuzu çökertebilir veya sayfa taşmalarına neden olabilir.\n\n"
             "Aşağıdaki butona tıklayarak kural setini kopyalayın ve AI asistanınıza 'Rules' olarak yapıştırın."
         )
@@ -280,9 +281,220 @@ class App(ctk.CTk):
         self.btn_copy_rules = ctk.CTkButton(
             card, text="Kuralları Panoya Kopyala",
             command=self._copy_rules,
-            font=("Segoe UI", 13, "bold"), fg_color=INNOVA_BLUE, hover_color=INNOVA_DARK, height=42
+            font=("Segoe UI", 13, "bold"), fg_color=TT_BLUE, hover_color=TT_DARK, height=42
         )
         self.btn_copy_rules.pack(padx=20, pady=(0, 25))
+
+    # ──────────────────────────────────────────────────────────────────
+    #  PDF STİLİ: Kurumsal stilin düzenlenebilir kısmı (tema, bkz. style.py)
+    # ──────────────────────────────────────────────────────────────────
+    def _build_style_frame(self):
+        frame = ctk.CTkFrame(self.main_area, fg_color="transparent")
+        self.frames["style"] = frame
+
+        ctk.CTkLabel(frame, text="PDF Stili", font=("Segoe UI", 20, "bold"), text_color=TEXT_PRIMARY).pack(anchor="w", padx=25, pady=(25, 5))
+        ctk.CTkLabel(frame, text="Kurumsal PDF'in renk, metin ve sayfa ayarları. Kaydetmeden önce test derlemesi yapılır.", font=("Segoe UI", 12), text_color=TEXT_SECONDARY).pack(anchor="w", padx=25, pady=(0, 10))
+
+        # Butonlar önce alta yerleşir ki kaydırılabilir form kalan yüksekliği doldursun
+        bottom = ctk.CTkFrame(frame, fg_color="transparent")
+        bottom.pack(side="bottom", fill="x", padx=25, pady=(0, 15))
+        self.lbl_style_status = ctk.CTkLabel(bottom, text="", font=("Segoe UI", 11), text_color=TEXT_SECONDARY,
+                                             wraplength=540, justify="left", anchor="w")
+        self.lbl_style_status.pack(fill="x", pady=(0, 6))
+        buttons = ctk.CTkFrame(bottom, fg_color="transparent")
+        buttons.pack(fill="x")
+        self.btn_style_save = ctk.CTkButton(
+            buttons, text="Kaydet ve Test Et", command=self._save_style,
+            font=("Segoe UI", 13, "bold"), fg_color=TT_BLUE, hover_color=TT_DARK, height=38
+        )
+        self.btn_style_save.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        self.btn_style_reset = ctk.CTkButton(
+            buttons, text="Varsayılana Dön", command=self._reset_style,
+            font=("Segoe UI", 13, "bold"), fg_color="#6c757d", hover_color="#5a6268", height=38
+        )
+        self.btn_style_reset.pack(side="left", fill="x", expand=True, padx=(5, 0))
+
+        form = ctk.CTkScrollableFrame(frame, fg_color=CARD_BG, corner_radius=10, border_width=1, border_color=CARD_BORDER)
+        form.pack(fill="both", expand=True, padx=25, pady=(0, 10))
+        form.grid_columnconfigure(1, weight=1)
+
+        self.style_vars = {}
+        row = 0
+
+        def section(title, hint=None):
+            nonlocal row
+            ctk.CTkLabel(form, text=title, font=("Segoe UI", 13, "bold"), text_color=TT_BLUE).grid(
+                row=row, column=0, columnspan=2, sticky="w", padx=10, pady=(14 if row else 6, 2))
+            row += 1
+            if hint:
+                ctk.CTkLabel(form, text=hint, font=("Segoe UI", 11), text_color=TEXT_SECONDARY,
+                             wraplength=480, justify="left").grid(row=row, column=0, columnspan=2, sticky="w", padx=10, pady=(0, 4))
+                row += 1
+
+        def label(text):
+            ctk.CTkLabel(form, text=text, font=("Segoe UI", 12), text_color=TEXT_PRIMARY).grid(
+                row=row, column=0, sticky="w", padx=(10, 10), pady=3)
+
+        def text_field(key, text, width=None):
+            nonlocal row
+            label(text)
+            var = ctk.StringVar()
+            ctk.CTkEntry(form, textvariable=var, font=("Segoe UI", 12), height=30, width=width or 140).grid(
+                row=row, column=1, sticky="w" if width else "ew", padx=(0, 10), pady=3)
+            self.style_vars[key] = var
+            row += 1
+
+        def color_field(key, text):
+            nonlocal row
+            label(text)
+            holder = ctk.CTkFrame(form, fg_color="transparent")
+            holder.grid(row=row, column=1, sticky="w", pady=3)
+            var = ctk.StringVar()
+            ctk.CTkEntry(holder, textvariable=var, font=("Consolas", 12), height=30, width=100).pack(side="left")
+            swatch = ctk.CTkFrame(holder, width=30, height=30, corner_radius=6, border_width=1, border_color=CARD_BORDER)
+            swatch.pack(side="left", padx=8)
+
+            def update_swatch(*_):
+                value = var.get().strip()
+                value = value if value.startswith("#") else "#" + value
+                if not style.validate_theme({**style.DEFAULT_THEME, key: value}):
+                    swatch.configure(fg_color=value)
+            var.trace_add("write", update_swatch)
+
+            def pick():
+                current = var.get().strip()
+                valid = not style.validate_theme({**style.DEFAULT_THEME, key: current})
+                chosen = colorchooser.askcolor(color=("#" + current.lstrip("#")) if valid else None, parent=self, title=text)[1]
+                if chosen:
+                    var.set(chosen.upper())
+            ctk.CTkButton(holder, text="Seç", width=60, height=30, command=pick,
+                          fg_color="#6c757d", hover_color="#5a6268").pack(side="left")
+            self.style_vars[key] = var
+            row += 1
+
+        section("Renkler", "Ana renk başlıklarda, bağlantılarda ve kapakta; ikincil renk üst/alt bilgide kullanılır.")
+        color_field("primary_color", "Ana renk")
+        color_field("secondary_color", "İkincil renk")
+
+        section("Üst ve Alt Bilgi", "Orta alt bilgi her sayfanın altında ortalanır (ör. takım adı); boş bırakılırsa gösterilmez.")
+        text_field("header_text", "Üst bilgi (sağ üst)")
+        text_field("footer_text", "Alt bilgi (sol alt)")
+        text_field("footer_center_text", "Alt bilgi (orta)")
+
+        section("Filigran")
+        label("Filigranı göster")
+        self.style_vars["watermark_enabled"] = ctk.BooleanVar()
+        ctk.CTkSwitch(form, text="", variable=self.style_vars["watermark_enabled"], progress_color=TT_BLUE).grid(
+            row=row, column=1, sticky="w", pady=3)
+        row += 1
+        text_field("watermark_text", "Filigran metni")
+
+        section("Kapak Sayfası")
+        text_field("cover_subtitle", "Alt başlık")
+        text_field("cover_org", "Kurum adı")
+        text_field("cover_notice", "Uyarı metni")
+
+        section("Sayfa Kenar Boşlukları (cm)")
+        text_field("margin_x_cm", "Sağ ve sol", width=80)
+        text_field("margin_y_cm", "Üst ve alt", width=80)
+
+        # Serbest LaTeX alanı, LaTeX bilmeyenlerin kafasını karıştırmasın diye bir düğmenin arkasında gizli durur
+        self.style_form = form
+        self.btn_style_advanced = ctk.CTkButton(
+            form, text="", command=lambda: self._show_style_advanced(not self.style_advanced_visible),
+            font=("Segoe UI", 13, "bold"), fg_color="transparent", text_color=TT_BLUE,
+            hover_color=NAV_HOVER_BG, anchor="w", height=28, width=10
+        )
+        self.btn_style_advanced.grid(row=row, column=0, columnspan=2, sticky="w", padx=4, pady=(14, 2))
+        row += 1
+        self.style_advanced_hint = ctk.CTkLabel(
+            form, text="Çekirdek stilin sonuna eklenen serbest LaTeX; yalnızca LaTeX bilenler içindir. "
+                       "Hatalı kod test derlemesinde yakalanır ve kaydedilmez.",
+            font=("Segoe UI", 11), text_color=TEXT_SECONDARY, wraplength=480, justify="left")
+        self.style_advanced_hint.grid(row=row, column=0, columnspan=2, sticky="w", padx=10, pady=(0, 4))
+        row += 1
+        self.style_extra = ctk.CTkTextbox(form, height=110, font=("Consolas", 11), fg_color=LOG_BG, text_color=LOG_TEXT,
+                                          border_width=1, border_color=CARD_BORDER)
+        self.style_extra.grid(row=row, column=0, columnspan=2, sticky="ew", padx=10, pady=(3, 10))
+
+        theme = style.load_theme()
+        self._fill_style_form(theme)
+        # Kayıtlı özel LaTeX varsa alan açık başlar; etkin olan kod gözden gizli kalmasın
+        self._show_style_advanced(bool(theme["extra_latex"]), scroll=False)
+
+    def _show_style_advanced(self, show, scroll=True):
+        self.style_advanced_visible = show
+        for widget in (self.style_advanced_hint, self.style_extra):
+            if show:
+                widget.grid()
+            else:
+                widget.grid_remove()
+        self.btn_style_advanced.configure(text="▾  Gelişmiş ayarları gizle" if show else "▸  Gelişmiş ayarları göster")
+        if show and scroll:
+            # Alan formun en altında açılır; kullanıcının ayrıca kaydırması gerekmesin
+            self.after(50, lambda: self.style_form._parent_canvas.yview_moveto(1.0))
+
+    def _fill_style_form(self, theme):
+        for key, var in self.style_vars.items():
+            if key == "watermark_enabled":
+                var.set(bool(theme[key]))
+            elif key in ("margin_x_cm", "margin_y_cm"):
+                var.set(f"{theme[key]:g}".replace(".", ","))
+            else:
+                var.set(theme[key])
+        self.style_extra.delete("1.0", "end")
+        self.style_extra.insert("1.0", theme["extra_latex"])
+
+    def _read_style_form(self):
+        theme = {key: var.get() for key, var in self.style_vars.items()}
+        theme["extra_latex"] = self.style_extra.get("1.0", "end")
+        return theme
+
+    def _set_style_status(self, text, color=TEXT_SECONDARY, busy=False):
+        def _update():
+            self.lbl_style_status.configure(text=text, text_color=color)
+            state = "disabled" if busy else "normal"
+            self.btn_style_save.configure(state=state)
+            self.btn_style_reset.configure(state=state)
+        self.after(0, _update)
+
+    def _save_style(self):
+        theme = self._read_style_form()
+        errors = style.validate_theme(theme)
+        if errors:
+            self._set_style_status("\n".join(errors), RED)
+            return
+        theme = style.normalize_theme(theme)
+        self._set_style_status("Test derlemesi yapılıyor, lütfen bekleyin...", busy=True)
+
+        def run():
+            pandoc, xelatex = deps.find_tool("pandoc"), deps.find_xelatex()
+            if not pandoc or not xelatex:
+                self._set_style_status("Pandoc veya XeLaTeX bulunamadı. Önce 'Sistem Kontrol' sekmesinden kurun.", RED)
+                return
+            messages = []
+            try:
+                ok = compile_self_test(pandoc, xelatex, messages.append, style.build_style(theme))
+            except Exception as e:
+                ok = False
+                messages.append(str(e))
+            if ok:
+                style.save_theme(theme)
+                self._set_style_status("Kaydedildi. Sonraki derlemelerde bu stil kullanılacak.", GREEN)
+            else:
+                detail = messages[-1].strip() if messages else ""
+                # LaTeX hatası "!" ile başlar; öncesindeki font uyarıları kullanıcı için gürültüdür
+                detail = detail[detail.find("! "):] if "! " in detail else detail[-400:]
+                self._set_style_status(f"Test derlemesi başarısız oldu, stil kaydedilmedi.\n{detail}", RED)
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _reset_style(self):
+        if not messagebox.askyesno("Varsayılana Dön", "Tüm PDF stili ayarları varsayılan değerlere dönecek. Devam edilsin mi?", parent=self):
+            return
+        style.save_theme(style.DEFAULT_THEME)
+        self._fill_style_form(style.DEFAULT_THEME)
+        self._set_style_status("Varsayılan stil geri yüklendi.", GREEN)
 
     # ===============================================================
     #                      SEKME GEÇİŞİ
@@ -339,7 +551,7 @@ class App(ctk.CTk):
 
         info_text = (
             "Kusursuz ve kurumsal PDF'ler üretebilmek için, Markdown dosyalarınızı "
-            "Yapay Zeka (Antigravity vb.) ile üretirken sisteme Innova standart kurallarını vermeniz gerekmektedir.\n\n"
+            "Yapay Zeka (Antigravity vb.) ile üretirken sisteme İnnova standart kurallarını vermeniz gerekmektedir.\n\n"
             "Aksi takdirde üretilen Markdown, derleyici motorumuzu çökertebilir veya sayfa taşmalarına neden olabilir.\n\n"
             "Lütfen aşağıdaki butona tıklayarak kural setini kopyalayın ve AI asistanınıza 'Rules' olarak yapıştırın."
         )
@@ -357,7 +569,7 @@ class App(ctk.CTk):
         self.clipboard_clear()
         self.clipboard_append(AI_PROMPT_RULES)
         self.update()
-        button.configure(text="Kurallar Kopyalandı!", fg_color=INNOVA_BLUE)
+        button.configure(text="Kurallar Kopyalandı!", fg_color=TT_BLUE)
         modal.after(2500, lambda: button.configure(text="Kuralları Panoya Kopyala", fg_color=["#3a7ebf", "#1f538d"]))
 
     def _copy_rules(self):
@@ -365,7 +577,7 @@ class App(ctk.CTk):
         self.clipboard_append(AI_PROMPT_RULES)
         self.update()
         self.btn_copy_rules.configure(text="Kurallar Kopyalandı!", fg_color="#28a745")
-        self.after(2500, lambda: self.btn_copy_rules.configure(text="Kuralları Panoya Kopyala", fg_color=INNOVA_BLUE))
+        self.after(2500, lambda: self.btn_copy_rules.configure(text="Kuralları Panoya Kopyala", fg_color=TT_BLUE))
 
     # ===============================================================
     #                    DOSYA SEÇME & DERLEME
@@ -381,8 +593,8 @@ class App(ctk.CTk):
             self.lbl_drop_hint.configure(text="Dosya seçildi — Compile PDF'e tıklayın")
             
             # Görsel Geribildirim
-            self.drop_zone.configure(border_color=INNOVA_BLUE)
-            self.lbl_drop_icon.configure(text="📄", text_color=INNOVA_BLUE)
+            self.drop_zone.configure(border_color=TT_BLUE)
+            self.lbl_drop_icon.configure(text="📄", text_color=TT_BLUE)
             
             # UI Reset
             self.success_frame.pack_forget()
@@ -414,68 +626,23 @@ class App(ctk.CTk):
 
         def run_checks():
             self.after(0, lambda: self.btn_check.configure(state="disabled"))
-            deps = ["pandoc", "xelatex"]
-            install_happened = False
+            try:
+                # Her bağımlılık için birden fazla kurulum yolu sırayla denenir (bkz. deps.py)
+                failed = deps.check_and_install(compile_self_test, _log_check)
+            except Exception as e:
+                failed = ["?"]
+                _log_check(f"\n[SİSTEM HATASI] {e}")
 
-            for dep in deps:
-                # 1. Kurulu mu kontrol et (shutil.which ile güvenli check)
-                cmd_path = shutil.which(dep)
-                if cmd_path:
-                    _log_check(f"[OK] {dep} sistemde zaten kurulu.")
-                    continue
-                else:
-                    _log_check(f"\n[EKSİK] {dep} bulunamadı! Otomatik kurulum başlatılıyor...")
-                    install_happened = True
-
-                # 2. Otomatik Kurulum Senaryoları
-                try:
-                    if IS_WINDOWS:
-                        if dep == "pandoc":
-                            _log_check("   -> Pandoc indiriliyor (winget ile)...")
-                            subprocess.run('winget install --id JohnMacFarlane.Pandoc --accept-package-agreements --accept-source-agreements --silent', shell=True, check=True)
-                        elif dep == "xelatex":
-                            _log_check("   -> MiKTeX indiriliyor (Boyutu büyüktür, lütfen bekleyin)...")
-                            subprocess.run('winget install --id ChristianSchenk.MiKTeX --accept-package-agreements --accept-source-agreements --silent', shell=True, check=True)
-                    else: # Mac Ortamı
-                        if dep == "pandoc":
-                            _log_check("   -> Pandoc indiriliyor (brew ile)...")
-                            subprocess.run("brew install pandoc", shell=True, check=True)
-                        elif dep == "xelatex":
-                            _log_check("   -> MacTeX indiriliyor (Boyutu büyüktür, lütfen bekleyin)...")
-                            subprocess.run("brew install --cask mactex-no-gui", shell=True, check=True)
-                    
-                    _log_check(f"[BAŞARILI] {dep} başarıyla sisteme entegre edildi!")
-                
-                except Exception as e:
-                    _log_check(f"[KRİTİK HATA] {dep} kurulamadı. IT kısıtlaması olabilir. Hata: {str(e)}")
-
-            # Mermaid (NPX) Kontrolü
-            _log_check("\n> Mermaid CLI (NPX) altyapısı kontrol ediliyor...")
-            npx_path = shutil.which("npx")
-            if npx_path:
-                _log_check("[OK] Node.js (npx) bulundu. Mermaid anlık (on-the-fly) çalıştırılacak.")
-            else:
-                _log_check("[EKSİK] Node.js bulunamadı! Kuruluyor...")
-                install_happened = True
-                try:
-                    if IS_WINDOWS:
-                        subprocess.run('winget install --id OpenJS.NodeJS --accept-package-agreements --accept-source-agreements --silent', shell=True, check=True)
-                    else:
-                        subprocess.run("brew install node", shell=True, check=True)
-                    _log_check("[BAŞARILI] Node.js kuruldu.")
-                except Exception as e:
-                    _log_check(f"[KRİTİK HATA] Node.js kurulamadı. Hata: {str(e)}")
-
-            if install_happened:
+            if failed:
                 _log_check("\n=======================================================")
-                _log_check("⚠️ ÖNEMLİ UYARI: KURULUMLAR TAMAMLANDI ⚠️")
-                _log_check("Yeni programların işletim sistemi tarafından algılanıp")
-                _log_check("PATH (Ortam Değişkenleri) listesine eklenebilmesi için,")
-                _log_check("LÜTFEN UYGULAMAYI KAPATIP YENİDEN AÇINIZ!")
+                _log_check(f"⚠️ KURULAMAYAN BİLEŞENLER: {', '.join(failed)}")
+                _log_check("Tüm otomatik yöntemler denendi. İnternet/proxy erişimi veya")
+                _log_check("IT kısıtlaması olabilir. Yukarıdaki hata mesajlarını IT")
+                _log_check("ekibinizle paylaşabilirsiniz.")
                 _log_check("=======================================================\n")
             else:
                 _log_check("\n> Tüm sistem gereksinimleri karşılanıyor. PDF derlemeye hazırsınız.")
-            
+
             self.after(0, lambda: self.btn_check.configure(state="normal"))
 
         threading.Thread(target=run_checks).start()
@@ -510,11 +677,12 @@ class App(ctk.CTk):
             self.btn_compile.pack_forget()
             self.success_frame.pack(fill="x", padx=20, pady=(0, 5))
             
-            self.btn_open_pdf.configure(command=lambda: webbrowser.open(pdf_out_path))
-            
             if IS_WINDOWS:
+                self.btn_open_pdf.configure(command=lambda: webbrowser.open(pdf_out_path))
                 self.btn_open_folder.configure(command=lambda: os.startfile(work_dir))
             else:
+                # Mac'te webbrowser düz dosya yolunu AppleScript "open location" ile açmaya çalışır ve sessizce başarısız olur
+                self.btn_open_pdf.configure(command=lambda: subprocess.run(['open', pdf_out_path]))
                 self.btn_open_folder.configure(command=lambda: subprocess.run(['open', work_dir]))
                 
         self.after(0, _update)
