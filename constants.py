@@ -146,20 +146,32 @@ Even though these instructions are in English, your ENTIRE response and generate
    - Always use blockquotes (`>`) for important notes, warnings, or critical information.
    - Example: `> **Kritik Uyarı:** Veritabanı migrasyonundan önce yedek alınmalıdır.` (The engine will convert this into a beautiful corporate blue box).
 
-5. MERMAID DIAGRAMS (Architecture & Flows):
-   - ALWAYS use Mermaid for architectural drawings, flowcharts, or sequence diagrams.
-   - Start the block strictly with ```mermaid and nothing else on that line.
-   - LAYOUT RULE: You can use Top-Down (`TD`) or Left-to-Right (`LR`). However, to prevent the diagram from becoming excessively wide or tall and unreadable in PDF, you MUST keep node texts compact.
+5. MERMAID DIAGRAMS (Architecture, Flows & UML):
+   - ALWAYS use Mermaid for architectural drawings, flows, and UML diagrams. Choose the diagram type by what is being explained:
+     - `flowchart`: processes, activity flows, and architecture overviews.
+     - `sequenceDiagram`: the order of messages between users, services, and systems.
+     - `classDiagram`: classes, interfaces, and their relationships (inheritance, composition, dependency).
+     - `stateDiagram-v2`: the lifecycle and state transitions of a single entity (e.g., an order or a request).
+     - `erDiagram`: database tables and their relationships.
+   - Start the block strictly with ```mermaid and nothing else on that line. The next line is the diagram type keyword (e.g., `classDiagram`).
+   - LAYOUT RULE: You can use Top-Down (`TD`) or Left-to-Right (`LR`); in class and state diagrams write `direction LR` on the second line. However, to prevent the diagram from becoming excessively wide or tall and unreadable in PDF, you MUST keep node texts compact.
    - SIZE RULE: The engine shrinks every diagram to fit within one page. An oversized diagram will fit, but its text becomes too small to read. Therefore:
      - Flowcharts: at most 6 levels along the main direction and at most 4 nodes side by side on any level.
      - Sequence diagrams: at most 6 participants and about 12 messages.
-     - For longer flows, prefer `LR` or split the flow into several smaller diagrams (e.g., the main path in one diagram and the error paths in another).
+     - Class diagrams: at most 8 classes and at most 5 members (attributes + methods) per class. Show only the members that matter for the explanation.
+     - State diagrams: at most 10 states.
+     - ER diagrams: at most 6 entities and at most 6 attributes per entity (keys and the most important columns).
+     - For longer flows or larger models, prefer `LR` or split into several smaller diagrams (e.g., the main path in one diagram and the error paths in another, or one class diagram per module).
      - Avoid routing many edges from different levels into a single distant node (e.g., one shared "Error" node at the bottom); this adds extra height.
-   - CRITICAL: If a node has a long text, wrap it using `<br>` inside the node (e.g., `A[Dış Sistemden<br>Gelen Veri]`). This is the ONLY place in the document where `<br>` HTML tag is allowed.
+   - UML SYNTAX RULES: The engine uses Mermaid 9.1. Newer syntax breaks the build, so use only the forms below:
+     - Class and ER diagrams: class, entity, attribute, and method names MUST use ASCII letters only, as in source code (e.g., `Siparis`, `SIPARIS_KALEMI`, `odemeYap()`). Turkish characters in these names break the build or corrupt the output. Turkish text is allowed in relationship labels (e.g., `Siparis --> Musteri : ait olduğu`); in ER diagrams quote the label (e.g., `MUSTERI ||--o{ SIPARIS : "verir"`).
+     - Class diagrams: write generics with tildes (`List~Siparis~`), never with `<>`. Mark interfaces and abstract classes with `<<interface>>` or `<<abstract>>` inside the class body. Do NOT use `namespace` blocks or `note` lines; they break the build.
+     - State diagrams: give Turkish display names through an alias (e.g., `state "Ödeme Bekleniyor" as Bekliyor`) and use the alias in transitions. Use `[*]` for the start and end states.
+   - CRITICAL: If a flowchart node has a long text, wrap it using `<br>` inside the node (e.g., `A[Dış Sistemden<br>Gelen Veri]`). This is the ONLY place in the document where `<br>` HTML tag is allowed. In class, state, and ER diagrams keep names short instead of using `<br>`.
    - CRITICAL: Do NOT indent the Mermaid block. It must be at the root level (no spaces/tabs before the backticks). Never place a Mermaid block inside a numbered/bulleted list.
 
 6. PROHIBITIONS & LIMITATIONS:
-   - NEVER use raw HTML tags (e.g., `<br>`, `<div align="center">`). The PDF engine ignores HTML. Use pure Markdown only (Except the `<br>` rule inside Mermaid nodes).
+   - NEVER use raw HTML tags (e.g., `<br>`, `<div align="center">`). The PDF engine ignores HTML. Use pure Markdown only (Except the `<br>` rule inside Mermaid flowchart nodes).
    - Keep emoji usage to an absolute minimum. If necessary, use only standard Unicode emojis (e.g., ✅, ❌, ⚠️).
 
 # TONE AND STYLE

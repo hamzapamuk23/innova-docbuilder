@@ -67,6 +67,17 @@ def _pandoc_version(pandoc):
         return (0, 0)
 
 
+def _mermaid_error(stderr):
+    """mmdc hata çıktısından Mermaid'in ayrıştırma mesajını (satır no ve ^ işaretiyle) alır, stack trace'i atar."""
+    lines = []
+    for line in (stderr or "").strip().splitlines():
+        if line.lstrip().startswith("at "):
+            break
+        lines.append(line)
+    message = "\n".join(lines).replace("Error: Evaluation failed: Error: ", "").strip()
+    return message or deps.tail_output(stderr)
+
+
 def build_pandoc_cmd(pandoc, xelatex, md_path, pdf_path, tex_path, title, date):
     # --syntax-highlighting pandoc 3.8 ile geldi; eski sürümler --highlight-style kullanır
     highlight = "--syntax-highlighting=tango" if _pandoc_version(pandoc) >= (3, 8) else "--highlight-style=tango"
@@ -167,18 +178,24 @@ def compile_pdf(app, md_path):
             if not npx_path:
                 raise Exception("Node.js (npx) sistemde bulunamadı! Lütfen 'Sistem Kontrol' menüsünden kurun.")
 
+            # Çizim hata verse de geçici dosyalar kullanıcının klasöründe kalmasın
+            temp_files.extend([mmd_path, png_path])
+
             # npx ile işletim sisteminden bağımsız anlık (on-the-fly) çalıştırma
             # DİKKAT: mmdc komutu açıkça belirtilmelidir, aksi takdirde npx '-p' parametresini kendine ait (--package) zanneder.
+            # 9.1.7'de kalınmalı: sonraki sürümler Node 18+ ister. AI kurallarındaki UML sözdizimi kısıtları bu sürüme göredir.
             creation_flags = subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0
-            subprocess.run(
+            result = subprocess.run(
                 [npx_path, '--yes', '@mermaid-js/mermaid-cli@9.1.7', 'mmdc', '-i', mmd_path, '-o', png_path, '-b', 'transparent', '-s', '3', '-p', puppeteer_config_path, '--quiet'],
-                check=True, cwd=work_dir, creationflags=creation_flags
+                capture_output=True, stdin=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace",
+                cwd=work_dir, creationflags=creation_flags
             )
-            
+            if result.returncode != 0:
+                raise Exception(f"Şema {i} çizilemedi:\n{_mermaid_error(result.stderr)}")
+
             # max height: Uzun (dikey) şemaların sayfanın alt kenarından taşmasını engeller.
             replace_str = f"\n\\vspace{{0.5cm}}\n\\begin{{figure}}[htbp]\n\\centering\n\\includegraphics[max width=\\textwidth, max height=0.85\\textheight, keepaspectratio]{{temp-diagram-{i}.png}}\n\\end{{figure}}\n\\vspace{{0.5cm}}\n"
             content = content.replace(match.group(0), replace_str)
-            temp_files.extend([mmd_path, png_path])
 
         # 4. Tablo Taşma Kalkanı (Word-wrap Hack)
         # Pandoc ZWSP'yi \hspace{0pt}'e çevirir, yani o noktada tiresiz satır kırılabilir. Bu yüzden yalnızca

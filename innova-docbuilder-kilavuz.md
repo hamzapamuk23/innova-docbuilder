@@ -23,7 +23,7 @@ F --> G[Kurumsal PDF<br>Raporu]
 | ----------- | ------------------------------------------------------------------------------------------------ |
 | Pandoc      | Markdown metnini Ayrık Sözdizimi Ağacı (AST) üzerinden LaTeX formatına çevirir.                  |
 | XeLaTeX     | UTF-8 karakter destekli modern dizgi motorudur. Kapak, filigran ve sayfa hizalamalarını yönetir. |
-| Mermaid CLI | Kod bloklarındaki şemaları izole edilmiş npx ortamında 3x çözünürlüklü PNG'lere dönüştürür.      |
+| Mermaid CLI | Akış, sıralama ve UML (sınıf, durum, ER) şemalarını npx ortamında 3x çözünürlüklü PNG'ye çevirir. |
 | Python Core | Arayüz yönetimini ve bileşenler arası veri iletişimini asenkron olarak sağlar.                   |
 
 > **Kritik Güvenlik Notu:** Uygulama tamamen çevrimdışı (air-gapped) mimaride çalışacak şekilde tasarlanmıştır. Herhangi bir dış sunucuya veri aktarımı yapılmamakta olup, komut setleri Command Injection zafiyetlerine karşı izole edilmiştir.
@@ -75,12 +75,16 @@ Your ENTIRE response MUST be completely in TURKISH.
 3. CODE BLOCKS: Always specify the language and keep lines under 80
    characters.
 4. BLOCKQUOTES: Use `>` for important notes and warnings.
-5. MERMAID DIAGRAMS: Always use Mermaid for flows. Prefer TD or LR. Keep
-   nodes compact using `<br>`. Do NOT indent the block. Flowcharts: max 6
-   levels, max 4 nodes per level. Sequence: max 6 participants, ~12
-   messages. Split longer flows into several diagrams.
-6. PROHIBITIONS: NEVER use raw HTML tags (except `<br>` in Mermaid). Minimize
-   emoji usage (only ✅, ❌, ⚠️).
+5. MERMAID DIAGRAMS: Always use Mermaid for flows and UML: flowchart,
+   sequenceDiagram, classDiagram, stateDiagram-v2, erDiagram. Prefer TD
+   or LR. Keep flowchart nodes compact using `<br>`. Do NOT indent the
+   block. Flowcharts: max 6 levels, max 4 nodes per level. Sequence: max
+   6 participants, ~12 messages. Class: max 8 classes, 5 members each.
+   State: max 10 states. ER: max 6 entities, 6 attributes each. Class and
+   ER names in ASCII only. No `namespace` or `note` in class diagrams.
+   Split larger diagrams into several diagrams.
+6. PROHIBITIONS: NEVER use raw HTML tags (except `<br>` in Mermaid
+   flowchart nodes). Minimize emoji usage (only ✅, ❌, ⚠️).
 
 # TONE AND STYLE
 Use passive voice or third-person (e.g., "Sistem tarafından uygulanmalıdır").
@@ -99,3 +103,7 @@ XeLaTeX motoru ilk kez çalıştırıldığında, kurumsal stil dosyasında beli
 ### Tablo ve Şema Taşmaları
 
 Uzun veritabanı isimlerinin tablodan taşmasını önlemek amacıyla sistem otomatik olarak Görünmez Boşluk (ZWSP) enjekte etmektedir. Mermaid şemaları ise genişlik ve yükseklik bakımından otomatik olarak sayfaya sığdırılmaktadır; bu nedenle sayfa dışına taşma oluşmaz. Ancak çok uzun veya çok geniş şemalar sığdırılırken küçüleceğinden metinleri okunaksız hâle gelebilir. Bu durumda AI kurallarında belirtildiği üzere düğüm (node) içi metinlerin `<br>` etiketi ile bölünmesi, şemanın `LR` yönüne çevrilmesi veya birden fazla küçük şemaya ayrılması gerekmektedir.
+
+### Şema Çizim Hataları
+
+Bir şemada sözdizimi hatası bulunduğunda derleme durdurulmakta ve günlük ekranında hatalı şemanın sıra numarası ile Mermaid'in hata mesajı gösterilmektedir (ör. `Şema 3 çizilemedi: Parse error on line 2`). `^` işareti hatanın bulunduğu karakteri göstermektedir. Sınıf ve ER diyagramlarında en sık görülen neden, sınıf, tablo veya alan adlarında Türkçe karakter kullanılmasıdır; bu adlar kaynak kodda olduğu gibi ASCII harflerle yazılmalı, Türkçe metin yalnızca ilişki etiketlerinde kullanılmalıdır. Motor Mermaid 9.1 sürümünü kullandığından, sınıf diyagramlarındaki `namespace` ve `note` gibi daha yeni sözdizimleri de hataya neden olmaktadır.

@@ -1,0 +1,36 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# --- Derleme sırasında oluşan geçici dosyalar ---
+kurumsal-stil.tex
+temp.md
+temp-diagram-*.mmd
+temp-diagram-*.png
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# --- Kaynak dokümanlar ve üretilen PDF'ler ---
+*.md
+*.pdf
+
+# Proje dokümantasyonu takip edilmeye devam etsin
+!README.md
+!innova-docbuilder-kilavuz.md
+!innova-docbuilder-kilavuz.pdf
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store
