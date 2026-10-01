@@ -78,6 +78,94 @@ def _mermaid_error(stderr):
     return message or deps.tail_output(stderr)
 
 
+_FENCE_RE = re.compile(r'^[ \t]*(`{3,}|~{3,})')
+_TABLE_SEP_CELL_RE = re.compile(r'^:?-{3,}:?$')
+# Sütun ağırlığı sınırları: tek bir uzun hücre tabloyu domine etmesin, kısa sütun (ör. "#") okunaksız daralmasın.
+_COL_MIN_WEIGHT = 5
+_COL_MAX_WEIGHT = 40
+
+
+def _split_table_row(line):
+    """Pipe tablo satırını hücrelere böler; satır içi kod ve kaçışlı (\\|) karakterlerdeki '|' ayraç sayılmaz."""
+    cells, current, in_code = [], [], False
+    text = line.strip()
+    if text.startswith('|'):
+        text = text[1:]
+    if text.endswith('|') and not text.endswith('\\|'):
+        text = text[:-1]
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch == '\\' and i + 1 < len(text):
+            current.append(text[i:i + 2])
+            i += 2
+            continue
+        if ch == '`':
+            in_code = not in_code
+        if ch == '|' and not in_code:
+            cells.append(''.join(current).strip())
+            current = []
+        else:
+            current.append(ch)
+        i += 1
+    cells.append(''.join(current).strip())
+    return cells
+
+
+def _visible_length(cell):
+    """Hücrenin PDF'te kaplayacağı yaklaşık karakter sayısı (Markdown işaretleri hariç)."""
+    return len(re.sub(r'\*\*|__|`', '', cell))
+
+
+def balance_table_widths(content):
+    """Pipe tabloların başlık ayırıcı satırını sütun içeriklerine göre yeniden yazar.
+
+    Pandoc, satırlarından biri 72 karakteri aşan tabloyu sayfa genişliğine yayar ve sütun oranlarını
+    ayırıcı satırdaki tire sayısından alır. AI'ın ürettiği `| --- | --- |` biçimi eşit genişlik demektir;
+    kısa bir ilk sütun ("Kriter", "#") sayfanın yarısını kaplar. Burada tire sayısı, sütundaki en uzun
+    hücrenin görünen uzunluğuna (sınırlar içinde) eşitlenir. Hizalama işaretleri (:) korunur, kod
+    bloklarına dokunulmaz."""
+    lines = content.split('\n')
+    out, i, in_fence, fence = [], 0, False, ''
+    while i < len(lines):
+        line = lines[i]
+        m = _FENCE_RE.match(line)
+        if m:
+            if not in_fence:
+                in_fence, fence = True, m.group(1)[0]
+            elif m.group(1)[0] == fence:
+                in_fence = False
+            out.append(line)
+            i += 1
+            continue
+        is_header = (not in_fence and line.lstrip().startswith('|') and i + 1 < len(lines)
+                     and lines[i + 1].lstrip().startswith('|'))
+        sep_cells = _split_table_row(lines[i + 1]) if is_header else []
+        if not sep_cells or not all(_TABLE_SEP_CELL_RE.match(c) for c in sep_cells):
+            out.append(line)
+            i += 1
+            continue
+        # Tablo: başlık + ayırıcı + '|' ile başlayan gövde satırları
+        end = i + 2
+        while end < len(lines) and lines[end].lstrip().startswith('|'):
+            end += 1
+        rows = [_split_table_row(l) for l in [lines[i]] + lines[i + 2:end]]
+        weights = []
+        for col in range(len(sep_cells)):
+            longest = max((_visible_length(r[col]) for r in rows if col < len(r)), default=0)
+            weights.append(min(max(longest, _COL_MIN_WEIGHT), _COL_MAX_WEIGHT))
+        new_sep = []
+        for cell, weight in zip(sep_cells, weights):
+            left, right = cell.startswith(':'), cell.endswith(':')
+            dashes = '-' * (weight - left - right)
+            new_sep.append((':' if left else '') + dashes + (':' if right else ''))
+        out.append(line)
+        out.append('| ' + ' | '.join(new_sep) + ' |')
+        out.extend(lines[i + 2:end])
+        i = end
+    return '\n'.join(out)
+
+
 def build_pandoc_cmd(pandoc, xelatex, md_path, pdf_path, tex_path, title, date):
     # --syntax-highlighting pandoc 3.8 ile geldi; eski sürümler --highlight-style kullanır
     highlight = "--syntax-highlighting=tango" if _pandoc_version(pandoc) >= (3, 8) else "--highlight-style=tango"
@@ -197,7 +285,12 @@ def compile_pdf(app, md_path):
             replace_str = f"\n\\vspace{{0.5cm}}\n\\begin{{figure}}[htbp]\n\\centering\n\\includegraphics[max width=\\textwidth, max height=0.85\\textheight, keepaspectratio]{{temp-diagram-{i}.png}}\n\\end{{figure}}\n\\vspace{{0.5cm}}\n"
             content = content.replace(match.group(0), replace_str)
 
-        # 4. Tablo Taşma Kalkanı (Word-wrap Hack)
+        # 4a. Tablo Sütun Oranları
+        # ZWSP'den önce çalışmalı: görünmez karakterler hücre uzunluğu ölçümünü şişirmesin.
+        app.log("Tablo sütun genişlikleri içeriğe göre dengeleniyor...")
+        content = balance_table_widths(content)
+
+        # 4b. Tablo Taşma Kalkanı (Word-wrap Hack)
         # Pandoc ZWSP'yi \hspace{0pt}'e çevirir, yani o noktada tiresiz satır kırılabilir. Bu yüzden yalnızca
         # tanımlayıcılara (CamelCase, SNAKE_CASE, rakamlı) uygulanır; düz Türkçe kelimeleri TeX tireleyerek böler.
         # Kod bloklarına (ZWSP orada karakter olarak kalır, renklendirmeyi bozar) ve bağlantı adreslerine
